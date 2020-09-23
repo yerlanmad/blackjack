@@ -1,8 +1,11 @@
 # frozen_string_literal: true
 
 class Game
+  INITIAL_PLAYER_BALANCE = 100
+  INITIAL_BET = 10
+
   def call
-    @dealer = Dealer.new('Dealer', 100)
+    @dealer = Dealer.new('Dealer', INITIAL_PLAYER_BALANCE)
     @bank = 0
     sign_in
     start
@@ -11,29 +14,50 @@ class Game
   private
 
   attr_reader :user, :dealer, :deck
-  attr_accessor :message, :bank
+  attr_accessor :bank
 
   def sign_in
-    print 'Enter your name: '
-    name = gets.chomp
-    @user = User.new(name.strip, 100)
+    name = Interface.user_name
+    @user = User.new(name.strip, INITIAL_PLAYER_BALANCE)
   end
 
   def start
     @deck = Deck.new
     user.cards.clear
     dealer.cards.clear
-    self.message = 'Game Started'
     2.times do
       initial_deal
     end
-    return unless initial_bet(10)
-    puts table
-    menu
+    return unless initial_bet(INITIAL_BET)
+
+    Interface.show_table(user, dealer)
+    action
+  end
+
+  def action
+    loop do
+      input = Interface.action
+      process_input(input)
+      break if input.to_sym == :exit || input.to_i == 3
+    end
+    start if Interface.restart?
+  end
+
+  def process_input(input)
+    case input.to_i
+    when 1
+      dealer_move
+      Interface.show_table(user, dealer)
+    when 2
+      user_move
+      dealer_move
+      Interface.show_table(user, dealer)
+    when 3
+      stop
+    end
   end
 
   def initial_deal
-    puts 'Dealing cards...'
     user.deal(deck.deal_card)
     dealer.deal(deck.deal_card)
   end
@@ -46,89 +70,31 @@ class Game
     self.bank += 2 * amount
   end
 
-  def table
-    "#{deck.deck.size} cards in deck | Bank: $#{bank} | #{message}\n" \
-      "#{user.name}, (#{user.score}, $#{user.account})\n" \
-      "| #{user.cards.join(' | ')} |\n" \
-      "#{dealer.name}, ($#{dealer.account})\n" \
-      "| #{dealer.cards.map { '*' }.join(' | ')} |"
-  end
-
-  def interface
-    %w[
-      ===============
-      1\ Pass
-      2\ Hit
-      3\ Open\ cards
-      Exit
-    ].each { |opt| puts opt }
-  end
-
-  def process_input(input)
-    case input.to_i
-    when 1
-      dealer_move
-    when 2
-      user_move
-      dealer_move
-    when 3
-      stop
-    end
-  end
-
-  def menu
-    loop do
-      interface
-      print 'Your action: '
-      input = gets.chomp.strip
-      break if input.downcase == 'exit'
-
-      process_input(input)
-      break if input.to_i == 3
-    end
-  end
-
   def dealer_move
     dealer.deal(deck.deal_card) if dealer.cards.size < 3 && dealer.score < 17
-
-    self.message = "Dealer's move"
-    puts table
   end
 
   def user_move
     user.deal(deck.deal_card) if user.cards.size < 3 && user.score < 21
-
-    self.message = 'Hit'
-    puts table
   end
 
   def stop
-    self.message = 'Game ended'
-    puts table
-    puts winner
-    puts result_table
+    result
+    Interface.show_result_table(user, dealer)
     self.bank = 0
-
-    puts 'Again? (Y/N)'
-    start if gets.chomp.upcase == 'Y'
   end
 
-  def result_table
-    "#{user.name}, (#{user.score}, $#{user.account}), | #{user.cards.join(' | ')} |\n" \
-      "#{dealer.name}, (#{dealer.score}, $#{dealer.account}), | #{dealer.cards.join(' | ')} |"
-  end
-
-  def winner
+  def result
     if user.score < 22 && (user.score > dealer.score || dealer.score > 21)
       user.account += bank
-      "#{user.name} win!"
+      Interface.winner(user)
     elsif user.score == dealer.score
       user.account += 0.5 * bank
       dealer.account += 0.5 * bank
-      'Draw'
+      Interface.draw
     else
       dealer.account += bank
-      "#{dealer.name} win!"
+      Interface.winner(dealer)
     end
   end
 end
